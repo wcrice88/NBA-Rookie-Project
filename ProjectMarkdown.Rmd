@@ -1,0 +1,455 @@
+---
+title: "NBA Homegrown Project"
+author: "William Rice"
+date: "2023-09-18"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries}
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(tidyverse)
+```
+
+```{r, echo = FALSE}
+team_data <- read_csv("team_stats.csv", show_col_types = FALSE)
+player_data <- read_csv("player_stats.csv", show_col_types = FALSE)
+project_dataset <- player_data %>%
+  filter(draftyear >= 2007 & draftyear <=2018) %>%
+  group_by(nbapersonid) %>%
+  mutate(years_in_league = season - draftyear + 1) %>%
+  filter(years_in_league <= 4 & team == first(team)) %>%
+  ungroup()
+view(project_dataset)
+
+```
+
+```{r, echo = FALSE}
+#Team Win Shares by Rookie Contract Players
+
+team_win_share_dataset <- project_dataset %>%
+  group_by(team) %>%
+  summarize(team_win_shares = sum(WS)) %>%
+  arrange(desc(team_win_shares)) %>%
+  mutate(team = reorder(team, -team_win_shares))
+view(team_win_share_dataset)
+
+team_colors <- c(
+  "OKC" = "orange" ,
+  "MIN" = "dodgerblue4" ,
+  "CHI" = "red" ,
+  "PHI" = "blue3", 
+  "DEN" = "skyblue", 
+  "ATL" = "red", 
+  "BOS" = "green3", 
+  "GSW" = "gold", 
+  "MIL" = "green4", 
+  "HOU" = "firebrick2", 
+  "TOR" = "black", 
+  "POR" = "red4", 
+  "UTA" = "navyblue",
+  "SAC" =  "purple", 
+  "MIA" = "firebrick",
+  "DET" =  "red", 
+  "SAS" = "gray",
+  "CHA" =  "blue4", 
+  "IND" = "goldenrod", 
+  "PHX" = "purple4", 
+  "WAS" = "red3", 
+  "NYK" = "orange", 
+  "MEM" = "skyblue", 
+  "BKN" = "black",
+  "CLE" =  "orangered3", 
+  "ORL" = "deepskyblue3", 
+  "LAC" = "red2", 
+  "DAL" = "blue", 
+  "LAL" = "yellow2",
+  "NOP" =  "darkblue"
+)
+
+
+options(repr.plot.width = 16, repr.plot.height = 8)
+
+ggplot(team_win_share_dataset, aes(x = team, y = team_win_shares, fill = team)) +
+  geom_bar(stat = "identity", width = 1) +
+  labs(title = "Total Win Shares by Teams of Players on Rookie Deals", x = "Team", y = "Total Team Win Shares") +
+  scale_fill_manual(values = team_colors) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(legend.position = "none")
+```
+
+## Including Plots
+
+```{r, echo = FALSE}
+
+project_dataset_2 <- project_dataset %>%
+  group_by(team) %>%
+  summarize(team_games_started = sum(games_start)) %>%
+  mutate(start_proportion = (team_games_started/5970))
+view(project_dataset_2)
+
+
+  
+team_rookie_contract_dataset <- project_dataset_2 %>% inner_join(team_win_share_dataset,
+                                                                     by = c('team' = 'team'))
+
+ggplot(team_rookie_contract_dataset, aes(x = start_proportion, y = team_win_shares, label = team, color = team)) +
+  geom_point() +
+  geom_text(vjust = -0.50, hjust = .75) + 
+  labs(x = "Start Proportion", y = "Team Win Shares", title = "Team Usage of 'Young' Players by Win Shares and Games Started") +
+  theme_minimal() +
+  scale_color_manual(values = team_colors) +
+  theme(legend.position = "none")
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r, echo = FALSE}
+draft_pick <- project_dataset %>%
+  group_by(nbapersonid) %>%
+  distinct(nbapersonid, .keep_all = TRUE) %>%
+  mutate(pick_status = case_when(
+    draftpick <= 5 ~ "High Pick",
+    draftpick > 5 & draftpick < 15 ~ "Lottery",
+    draftpick > 14 & draftpick < 31 ~ "First Rounder",
+    draftpick > 30 ~ "Second Rounder",
+    TRUE ~ "Undrafted"))
+    
+view(draft_pick)
+
+top_five_draft_pick_by_team <- draft_pick %>%
+  group_by(team, pick_status) %>%
+  summarize(count = n()) %>%
+  filter(pick_status == 'High Pick')
+
+all_teams <- unique(draft_pick$team)
+all_teams_df <- data.frame(team = all_teams)
+
+top_five_draft_pick_by_team <- all_teams_df %>%
+  left_join(top_five_draft_pick_by_team, by = "team") %>%
+  replace_na(list(count = 0)) %>%
+  replace_na(list(pick_status = 'High Pick'))
+
+view(top_five_draft_pick_by_team)
+
+
+lottery_draft_pick_by_team <- draft_pick %>%
+  group_by(team, pick_status) %>%
+  summarize(count = n()) %>%
+  filter(pick_status == 'Lottery')
+
+lottery_draft_pick_by_team <- all_teams_df %>%
+  left_join(lottery_draft_pick_by_team, by = "team") %>%
+  replace_na(list(count = 0)) %>%
+  replace_na(list(pick_status = 'Lottery'))
+
+view(lottery_draft_pick_by_team)
+
+
+
+options(repr.plot.width = 16, repr.plot.height = 8)
+
+ggplot(top_five_draft_pick_by_team, aes(x = team, y = count, fill = team)) +
+  geom_bar(stat = 'identity', position = 'dodge', width = 0.7) +
+  labs(x = 'Team', y = 'Count', title = "Count of Top 5 Draft Picks by Team, 2007-2021") +
+  scale_fill_manual(values = team_colors) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(legend.position = "none")
+
+ggplot(lottery_draft_pick_by_team, aes(x = team, y = count, fill = team)) +
+  geom_bar(stat = 'identity', position = 'dodge', width = 0.7) +
+  labs(x = 'Team', y = 'Count', title = "Count of Lottery Picks by Team, 2007-2021") +
+  scale_fill_manual(values = team_colors) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(legend.position = "none")
+
+lottery_pick_dataset <- project_dataset %>%
+  group_by(nbapersonid) %>%
+  distinct(nbapersonid, .keep_all = TRUE) %>%
+  mutate(pick_status = case_when(
+    draftpick <= 14 ~ "Lottery Pick",
+    TRUE ~ "NA"))
+view(lottery_pick_dataset)
+
+lottery_pick_count <- lottery_pick_dataset %>%
+  group_by(team, pick_status) %>%
+  summarize(count = n()) %>%
+  filter(pick_status == 'Lottery Pick')
+
+all_teams <- unique(draft_pick$team)
+all_teams_df <- data.frame(team = all_teams)
+
+
+lottery_pick_count <- all_teams_df %>%
+  left_join(lottery_pick_count, by = "team") %>%
+  replace_na(list(count = 0)) %>%
+  replace_na(list(pick_status = "Lottery Pick"))
+view(lottery_pick_count)
+
+
+
+team_pick_and_shares_dataset <- lottery_pick_count %>% inner_join(team_rookie_contract_dataset, by = c('team' = 'team'))
+view(team_pick_and_shares_dataset)
+
+
+ggplot(team_pick_and_shares_dataset, aes(x = count, y = team_win_shares, fill = team, label = team, color = team)) +
+  geom_point() +
+  geom_text(vjust = -0.50, hjust = .75) + 
+  labs(x = "Number of Lottery Picks", y = "Team Win Shares", title = "Win Shares of 'Young Players by Lottery Pick Frequency") +
+  theme_minimal() +
+  scale_color_manual(values = team_colors) +
+  theme(legend.position = "none")
+
+ggplot(team_pick_and_shares_dataset, aes(x = count, y = start_proportion, fill = team, label = team, color = team)) +
+  geom_point() +
+  geom_text(vjust = -0.50, hjust = .75) + 
+  labs(x = "Number of Lottery Picks", y = "Start Proportion", title = "Start Proportion of 'Young Players by Lottery Pick Frequency") +
+  theme_minimal() +
+  scale_color_manual(values = team_colors) +
+  theme(legend.position = "none")
+```
+
+```{r}
+project_dataset <- project_dataset %>%
+  mutate(ppg = points/games) %>%
+  mutate(apg = ast/games) %>%
+  mutate(rpg = tot_reb/games) %>%
+  mutate(mpg = mins/games) %>%
+  mutate_at(vars(apg, mpg, ppg, rpg), ~ round(., 1))
+view(project_dataset)
+
+
+statistics_summary <- project_dataset %>%
+  group_by(team) %>%
+  summarize(
+    average_ppg = mean(ppg),
+    average_apg = mean(apg),
+    average_rpg = mean(rpg),
+    average_mpg = mean(mpg)
+  ) %>%
+  mutate_at(vars(average_ppg, average_apg, average_rpg, average_mpg), ~ round(., 1))
+view(statistics_summary)
+
+
+filtered_statistics_dataset <- project_dataset %>%
+  filter(mpg > mean(mpg)) %>%
+  filter(WS > mean(WS)) %>%
+  filter(efg > mean(efg)) %>%
+  filter(BPM > mean(BPM)) %>%
+  filter(PER > mean(PER)) %>%
+  filter(VORP > mean(VORP))
+view(filtered_statistics_dataset)
+
+
+rookies_filtered <- draft_pick %>%
+  mutate(ppg = points/games) %>%
+  mutate(apg = ast/games) %>%
+  mutate(rpg = tot_reb/games) %>%
+  mutate(mpg = mins/games) %>%
+  mutate_at(vars(apg, mpg, ppg, rpg), ~ round(., 1)) %>%
+  mutate(total_possible_games = ifelse(season == 2011 | season == 2020 | season == 2021, ifelse(season == 2011, 66, 72), 82)) %>%
+  filter(games >= 0.70*total_possible_games & mpg > 12) %>% 
+  filter(WS > 0) %>%
+  filter(ppg > 8) %>%
+  group_by(team) %>%
+  summarize(count = n())
+
+view(rookies_filtered)
+
+grouped_statistics_means <- draft_pick %>%
+  mutate(ppg = points/games) %>%
+  mutate(apg = ast/games) %>%
+  mutate(rpg = tot_reb/games) %>%
+  mutate(mpg = mins/games) %>%
+  mutate_at(vars(apg, mpg, ppg, rpg), ~ round(., 1)) %>%
+  group_by(pick_status) %>%
+  summarize(
+    average_ppg = mean(ppg),
+    average_apg = mean(apg),
+    average_rpg = mean(rpg),
+    average_mpg = mean(mpg),
+    average_WS = mean(WS),
+    average_PER = mean(PER)
+  ) %>%
+  mutate_at(vars(average_ppg, average_apg, average_rpg, average_mpg, average_WS), ~ round(., 1))
+view(grouped_statistics_means)
+  
+rookie_successes <- left_join(draft_pick, grouped_statistics_means, by = "pick_status") %>%
+  mutate(ppg = points/games) %>%
+  mutate(apg = ast/games) %>%
+  mutate(rpg = tot_reb/games) %>%
+  mutate(mpg = mins/games) %>%
+  mutate_at(vars(apg, mpg, ppg, rpg), ~ round(., 1)) %>%
+  filter(WS > average_WS) %>%
+  filter(mpg > average_mpg) %>%
+  filter(PER > average_PER) %>%
+  filter(ppg > average_ppg + 2| apg > average_apg + 1 | rpg > average_rpg + 1.5) %>%
+  group_by(team) %>%
+  summarize(count = n())
+view(rookie_successes)
+
+team_total_rookies <- draft_pick %>%
+  group_by(team) %>%
+  summarize(count = n())
+view(team_total_rookies)
+
+success_proportion <- left_join(rookie_successes, team_total_rookies, by = "team") %>%
+  mutate(rookie_hits = count.x/count.y) %>%
+  mutate_at(vars(rookie_hits), ~ round(., 3)) %>%
+  select(-count.x, -count.y)
+view(success_proportion)
+  
+
+ggplot(success_proportion, aes(x = team, y = rookie_hits, fill = team)) +
+  geom_bar(stat = 'identity', width = 0.9) +
+  labs(x = 'Team', y = 'Proportion of "Productive" Rookies', title = "Proportion of Productive Rookies by NBA Team, 2007-2021") +
+  scale_fill_manual(values = team_colors) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(legend.position = "none")
+```
+
+```{r}
+team_data <- team_data %>%
+  mutate(win_percentage = W/games) %>%
+  mutate_at(vars(win_percentage), ~ round(., 3))
+
+team_and_player_data <- left_join(draft_pick, team_data, by = c("nbateamid", "season")) %>%
+  select(-games.y, -team.y) %>%
+  rename(team_off_rtg = off_rtg,
+  team_def_rtg = def_rtg,
+  team_net_rtg = net_rtg,
+  team_win_percentage = win_percentage,
+  games = games.x,
+  team = team.x)
+view(team_and_player_data)
+
+rookie_team_data <- team_and_player_data %>%
+  group_by(team, season) %>%
+  summarize(rookie_win_shares = sum(WS))
+view(rookie_team_data)
+
+rookie_team_data <- left_join(team_data, rookie_team_data, by = c('team', 'season')) %>%
+  mutate_all(~ifelse(is.na(.), 0, .))
+
+
+rookie_team_data <- rookie_team_data %>%
+  filter(season <= 2018)
+
+view(rookie_team_data)
+
+ggplot(rookie_team_data, aes(x = win_percentage, y = rookie_win_shares, color = team, label = team, group = team)) +
+  geom_jitter() +
+  geom_smooth(method = "lm", se = FALSE, color = "black") +
+  geom_text(vjust = -0.50, hjust = .75) + 
+  labs(x = "Team Winning Percentage", y = "Rookie Win Shares", title = "Rookie Reliance in Relation to Team Winning Percentage, 2007-2018") +
+  theme_minimal() +
+  scale_color_manual(values = team_colors) +
+  facet_wrap(~season, ncol = 6) +
+  theme(legend.position = "none")
+
+ggplot(rookie_team_data, aes(x = win_percentage, y = rookie_win_shares, group = team, color = team)) +
+  geom_jitter() +
+  geom_text(vjust = -0.50, hjust = .75, label = "") + 
+  labs(x = "Team Winning Percentage", y = "Rookie Win Shares", title = "Rookie Reliance in Relation to Team Winning Percentage, 2007-2018") +
+  theme_minimal() +
+  facet_wrap(~team, ncol = 6) +
+  scale_color_manual(values = team_colors) +
+  theme(legend.position = "none")
+  
+rookie_regression <- lm(win_percentage ~ rookie_win_shares, data = rookie_team_data)
+cor(rookie_team_data$rookie_win_shares, rookie_team_data$win_percentage)
+
+print(rookie_regression)
+```
+
+```{r}
+improvement_dataset <- project_dataset %>%
+  filter(years_in_league == 1 | years_in_league == 4) %>%
+  group_by(nbapersonid) %>%
+  filter(n_distinct(years_in_league) == 2) %>%
+  ungroup()
+view(improvement_dataset)
+
+improvement_dataset[299, "player"] <- 'Luka Doncic'
+
+
+
+difference_dataset <- improvement_dataset %>%
+  select(nbapersonid, player, WS, mpg, ppg, efg, PER, apg, rpg, VORP, BPM, usg, ftp, fgp3) %>%
+  group_by(nbapersonid, player) %>%
+  summarize(
+    WS_diff = last(WS) - first(WS),
+    mpg_diff = last(mpg) - first(mpg),
+    ppg_diff = last(ppg) - first(ppg),
+    efg_diff = last(efg) - first(efg),
+    PER_diff = last(PER) - first(PER),
+    apg_diff = last(apg) - first(apg),
+    VORP_diff = last(VORP) - first(VORP),
+    BPM_diff = last(BPM) - first(BPM),
+    usg_diff = last(usg) - first(usg),
+    ftp_diff = last(ftp) - first(ftp),
+    fgp3_diff = last(fgp3) - first(fgp3),
+    rpg_diff = last(rpg) - first(rpg)
+  ) %>%
+  ungroup()
+
+view(difference_dataset) 
+
+
+draft_pick[801, "player"] <- 'Luka Doncic'
+
+
+draft_pick_filtered <- draft_pick %>%
+  semi_join(difference_dataset, by = "nbapersonid")
+
+difference_dataset <- left_join(difference_dataset, draft_pick_filtered, by = "nbapersonid")
+
+difference_dataset <- difference_dataset %>%
+  select(nbapersonid, player.x, WS_diff, rpg_diff, fgp3_diff, ftp_diff, usg_diff, BPM_diff, VORP_diff, apg_diff, PER_diff, efg_diff, ppg_diff, mpg_diff, draftyear, draftpick, team, pick_status) %>%
+  rename(player = player.x)
+
+
+team_improvement <- difference_dataset %>%
+  group_by(team) %>%
+  summarize(
+    count = n(),
+    average_win_share_improvement = mean(WS_diff),
+    minutes_improvement = mean(mpg_diff),
+    PER_improvement = mean(PER_diff),
+    VORP_improvement = mean(VORP_diff),
+    points_improvement = mean(ppg_diff)
+    ) %>%
+  mutate_at(vars(average_win_share_improvement, PER_improvement, minutes_improvement, VORP_improvement, points_improvement), ~ round(. , 1))
+  
+view(team_improvement)  
+
+moderate_improvement_teams <- team_improvement %>%
+  filter(minutes_improvement >= 6 & points_improvement >= 4 & count >= 4)
+view(moderate_improvement_teams)
+#On very small minimums, half the league saw marginal success from their drafted rookies from year 1 to year 4#
+
+high_improvement_teams <- team_improvement %>%
+  filter(minutes_improvement >= 8 & points_improvement >= 6 & count >= 6 & PER_improvement > 0)
+view(high_improvement_teams)
+#On more filters and higher thresholds, 7 teams saw high improvement from their drafted players#
+
+highest_improving_teams <- team_improvement %>%
+  filter(minutes_improvement >= 10 & points_improvement >= 7.5 & count >= 8 & PER_improvement > 2)
+view(highest_improving_teams)
+#On the filters that got towards the most extreme, Toronto and Boston saw the most improvement in quality and quantity from their drafted rookies from 2007-2018#
+
+
+```
+
